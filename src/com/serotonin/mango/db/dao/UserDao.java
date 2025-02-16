@@ -30,6 +30,7 @@ import org.springframework.transaction.support.TransactionCallbackWithoutResult;
 
 import com.serotonin.db.spring.GenericRowMapper;
 import com.serotonin.mango.Common;
+import com.serotonin.mango.db.dao.UserDao.UserRowMapper;
 import com.serotonin.mango.rt.dataImage.SetPointSource;
 import com.serotonin.mango.rt.event.EventInstance;
 import com.serotonin.mango.vo.User;
@@ -41,6 +42,12 @@ public class UserDao extends BaseDao {
     private static final String USER_SELECT = "select id, username, password, email, phone, admin, disabled, selectedWatchList, homeUrl, lastLogin, "
             + "  receiveAlarmEmails, receiveOwnAuditEvents " + "from users ";
 
+    // Updated SQL to include all columns per the schema
+    private static final String USER_UPDATE = "update users set "
+            + "username=?, password=?, email=?, phone=?, admin=?, disabled=?, "
+            + "selectedWatchList=?, homeUrl=?, lastLogin=?, receiveAlarmEmails=?, "
+            + "receiveOwnAuditEvents=? where id=?";
+    
     public User getUser(int id) {
         User user = queryForObject(USER_SELECT + "where id=?", new Object[] { id }, new UserRowMapper(), null);
         populateUserPermissions(user);
@@ -133,24 +140,69 @@ public class UserDao extends BaseDao {
                 USER_INSERT,
                 new Object[] { user.getUsername(), user.getPassword(), user.getEmail(), user.getPhone(),
                         boolToChar(user.isAdmin()), boolToChar(user.isDisabled()), user.getHomeUrl(),
-                        user.getReceiveAlarmEmails(), boolToChar(user.isReceiveOwnAuditEvents()) }, new int[] {
+                        user.getReceiveAlarmEmails(), boolToChar(user.isReceiveOwnAuditEvents()) }, 
+                new int[] {
                         Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
                         Types.VARCHAR, Types.INTEGER, Types.VARCHAR });
         user.setId(id);
         saveRelationalData(user);
     }
 
-    private static final String USER_UPDATE = "update users set "
-            + "  username=?, password=?, email=?, phone=?, admin=?, disabled=?, homeUrl=?, receiveAlarmEmails=?, "
-            + "  receiveOwnAuditEvents=? " + "where id=?";
-
+    /**
+     * Updates a user in the database. If the new password is null,
+     * the existing password is preserved.
+     */
     void updateUser(User user) {
-        ejt.update(
-                USER_UPDATE,
-                new Object[] { user.getUsername(), user.getPassword(), user.getEmail(), user.getPhone(),
-                        boolToChar(user.isAdmin()), boolToChar(user.isDisabled()), user.getHomeUrl(),
-                        user.getReceiveAlarmEmails(), boolToChar(user.isReceiveOwnAuditEvents()), user.getId() });
-        saveRelationalData(user);
+        // Retrieve the existing user to ensure we can preserve the password if needed
+        User existingUser = getUser(user.getId());
+        if (existingUser == null) {
+            throw new RuntimeException("User not found with id: " + user.getId());
+        }
+
+        // Use the existing password if no new password is provided
+        String passwordToUse = user.getPassword();
+        if (passwordToUse == null) {
+            passwordToUse = existingUser.getPassword();
+        }
+
+        // Perform the update with explicit type mapping for each parameter
+        try {
+            ejt.update(
+                    USER_UPDATE,
+                    new Object[] {
+                            user.getUsername(), // username
+                            passwordToUse, // password
+                            user.getEmail(), // email
+                            user.getPhone(), // phone
+                            boolToChar(user.isAdmin()), // admin (as CHAR)
+                            boolToChar(user.isDisabled()), // disabled (as CHAR)
+                            user.getSelectedWatchList(), // selectedWatchList (INTEGER)
+                            user.getHomeUrl(), // homeUrl (VARCHAR)
+                            user.getLastLogin(), // lastLogin (BIGINT)
+                            user.getReceiveAlarmEmails(), // receiveAlarmEmails (INTEGER)
+                            boolToChar(user.isReceiveOwnAuditEvents()), // receiveOwnAuditEvents (as CHAR)
+                            user.getId() // id (INTEGER)
+                    },
+                    new int[] {
+                            Types.VARCHAR, // username
+                            Types.VARCHAR, // password
+                            Types.VARCHAR, // email
+                            Types.VARCHAR, // phone
+                            Types.CHAR, // admin (Y/N)
+                            Types.CHAR, // disabled (Y/N)
+                            Types.INTEGER, // selectedWatchList
+                            Types.VARCHAR, // homeUrl
+                            Types.BIGINT, // lastLogin (timestamp)
+                            Types.INTEGER, // receiveAlarmEmails
+                            Types.CHAR, // receiveOwnAuditEvents (Y/N)
+                            Types.INTEGER // id
+                    });
+
+            // After successful update, update the user's permissions
+            saveRelationalData(user);
+        } catch (Exception e) {
+            throw new RuntimeException("Error updating user: " + e.getMessage(), e);
+        }
     }
 
     private void saveRelationalData(final User user) {
