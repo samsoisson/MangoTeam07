@@ -47,7 +47,7 @@ public class UserDao extends BaseDao {
             + "username=?, password=?, email=?, phone=?, admin=?, disabled=?, "
             + "selectedWatchList=?, homeUrl=?, lastLogin=?, receiveAlarmEmails=?, "
             + "receiveOwnAuditEvents=? where id=?";
-    
+
     public User getUser(int id) {
         User user = queryForObject(USER_SELECT + "where id=?", new Object[] { id }, new UserRowMapper(), null);
         populateUserPermissions(user);
@@ -140,7 +140,7 @@ public class UserDao extends BaseDao {
                 USER_INSERT,
                 new Object[] { user.getUsername(), user.getPassword(), user.getEmail(), user.getPhone(),
                         boolToChar(user.isAdmin()), boolToChar(user.isDisabled()), user.getHomeUrl(),
-                        user.getReceiveAlarmEmails(), boolToChar(user.isReceiveOwnAuditEvents()) }, 
+                        user.getReceiveAlarmEmails(), boolToChar(user.isReceiveOwnAuditEvents()) },
                 new int[] {
                         Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR, Types.VARCHAR,
                         Types.VARCHAR, Types.INTEGER, Types.VARCHAR });
